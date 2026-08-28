@@ -1,0 +1,6 @@
+{
+  "name": "Love Letter",
+  "description": "A little love letter, made just for you.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
