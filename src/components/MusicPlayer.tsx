@@ -1,129 +1,142 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
-import { Play, Pause, SkipBack, SkipForward, Music2, Volume2, VolumeX, Sparkles } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Music2, Volume2, VolumeX, Sparkles, Disc } from 'lucide-react';
 import { songs } from '../data/songs';
 import { Song } from '../types';
-import { romanticAudio } from '../utils/audioSynth';
 
 export const MusicPlayer: React.FC = () => {
   const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(165); // 2:45 default duration in seconds
+  const [duration, setDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(0.8);
-  const [useSynth, setUseSynth] = useState(true);
+  const [imageError, setImageError] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const progressTimerRef = useRef<number | null>(null);
+  const shouldAutoPlayRef = useRef(false);
 
   const currentSong: Song = songs[currentTrackIndex] || songs[0];
 
-  // Helper to format seconds into mm:ss
+  // Helper to parse fallback duration from "mm:ss" if metadata isn't loaded yet
+  const getFallbackDuration = useCallback((track: Song) => {
+    if (track.duration) {
+      const parts = track.duration.split(':');
+      if (parts.length === 2) {
+        return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+      }
+    }
+    return 0;
+  }, []);
+
+  // Format seconds into mm:ss
   const formatTime = (secs: number) => {
+    if (isNaN(secs) || secs < 0) return '0:00';
     const m = Math.floor(secs / 60);
     const s = Math.floor(secs % 60);
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  // Toggle Play / Pause
-  const togglePlay = () => {
-    if (isPlaying) {
-      pauseAudio();
-    } else {
-      playAudio();
+  // Reset image error state when changing songs
+  useEffect(() => {
+    setImageError(false);
+  }, [currentTrackIndex]);
+
+  // Sync volume with HTML audio element
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = volume;
+      audioRef.current.muted = isMuted;
     }
-  };
+  }, [volume, isMuted]);
 
-  const playAudio = () => {
-    setIsPlaying(true);
-
-    if (audioRef.current && currentSong.audio && !useSynth) {
-      audioRef.current.play().catch(() => {
-        // Fallback to Web Audio romantic synth
-        setUseSynth(true);
-        romanticAudio.startTrack(currentSong.id);
-      });
-    } else {
-      // Use romantic ambient audio engine
-      romanticAudio.startTrack(currentSong.id);
-    }
-  };
-
-  const pauseAudio = () => {
-    setIsPlaying(false);
+  // Track switching logic with continuous playback
+  const switchTrack = useCallback((newIndex: number, autoPlay: boolean = isPlaying) => {
+    shouldAutoPlayRef.current = autoPlay;
     if (audioRef.current) {
       audioRef.current.pause();
+      audioRef.current.currentTime = 0;
     }
-    romanticAudio.stop();
-  };
-
-  const handleNext = () => {
-    const nextIdx = (currentTrackIndex + 1) % songs.length;
-    switchTrack(nextIdx);
-  };
-
-  const handlePrev = () => {
-    const prevIdx = (currentTrackIndex - 1 + songs.length) % songs.length;
-    switchTrack(prevIdx);
-  };
-
-  const switchTrack = (index: number) => {
-    pauseAudio();
-    setCurrentTrackIndex(index);
     setCurrentTime(0);
+    setCurrentTrackIndex(newIndex);
     
-    // Set track duration estimate
-    const track = songs[index];
-    if (track.duration) {
-      const parts = track.duration.split(':');
-      if (parts.length === 2) {
-        setDuration(parseInt(parts[0]) * 60 + parseInt(parts[1]));
-      }
-    }
+    // Set preliminary duration from metadata in songs.ts
+    const fallbackDur = getFallbackDuration(songs[newIndex]);
+    setDuration(fallbackDur);
+  }, [isPlaying, getFallbackDuration]);
 
-    // Auto-resume if user was already playing
-    setTimeout(() => {
-      setIsPlaying(true);
-      romanticAudio.startTrack(songs[index].id);
-    }, 150);
+  // Next / Prev handlers
+  const handleNext = useCallback(() => {
+    const nextIdx = (currentTrackIndex + 1) % songs.length;
+    switchTrack(nextIdx, isPlaying);
+  }, [currentTrackIndex, isPlaying, switchTrack]);
+
+  const handlePrev = useCallback(() => {
+    const prevIdx = (currentTrackIndex - 1 + songs.length) % songs.length;
+    switchTrack(prevIdx, isPlaying);
+  }, [currentTrackIndex, isPlaying, switchTrack]);
+
+  // Audio event handlers
+  const handleLoadedMetadata = () => {
+    if (audioRef.current && !isNaN(audioRef.current.duration) && audioRef.current.duration > 0) {
+      setDuration(audioRef.current.duration);
+    }
+    
+    // If track changed while playing, continue playback seamlessly
+    if (shouldAutoPlayRef.current && audioRef.current) {
+      audioRef.current.play().then(() => {
+        setIsPlaying(true);
+      }).catch((err) => {
+        console.warn('Playback could not start automatically:', err);
+        setIsPlaying(false);
+      });
+      shouldAutoPlayRef.current = false;
+    }
   };
 
-  // Simulated playback time advancement
-  useEffect(() => {
-    if (isPlaying) {
-      progressTimerRef.current = window.setInterval(() => {
-        setCurrentTime((prev) => {
-          if (prev >= duration) {
-            handleNext();
-            return 0;
-          }
-          return prev + 1;
-        });
-      }, 1000);
-    } else {
-      if (progressTimerRef.current) {
-        clearInterval(progressTimerRef.current);
+  const handleTimeUpdate = () => {
+    if (audioRef.current) {
+      setCurrentTime(audioRef.current.currentTime);
+      if (!isNaN(audioRef.current.duration) && audioRef.current.duration > 0 && duration !== audioRef.current.duration) {
+        setDuration(audioRef.current.duration);
       }
     }
+  };
 
-    return () => {
-      if (progressTimerRef.current) {
-        clearInterval(progressTimerRef.current);
+  const handleEnded = () => {
+    // Automatically transition to next song and loop when reaching end of playlist
+    const nextIdx = (currentTrackIndex + 1) % songs.length;
+    switchTrack(nextIdx, true);
+  };
+
+  const handlePlayEvent = () => {
+    setIsPlaying(true);
+  };
+
+  const handlePauseEvent = () => {
+    setIsPlaying(false);
+  };
+
+  // Toggle Play / Pause button
+  const togglePlay = async () => {
+    if (!audioRef.current) return;
+
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+      shouldAutoPlayRef.current = false;
+    } else {
+      try {
+        await audioRef.current.play();
+        setIsPlaying(true);
+      } catch (error) {
+        console.warn('Playback prevented or file not found:', error);
+        setIsPlaying(false);
       }
-    };
-  }, [isPlaying, duration, currentTrackIndex]);
+    }
+  };
 
-  // Cleanup on component unmount
-  useEffect(() => {
-    return () => {
-      romanticAudio.stop();
-      if (progressTimerRef.current) {
-        clearInterval(progressTimerRef.current);
-      }
-    };
-  }, []);
-
+  // Seek handler
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const targetTime = Number(e.target.value);
     setCurrentTime(targetTime);
@@ -132,23 +145,44 @@ export const MusicPlayer: React.FC = () => {
     }
   };
 
+  // Toggle Mute
   const toggleMute = () => {
     const nextMuted = !isMuted;
     setIsMuted(nextMuted);
-    if (nextMuted) {
-      romanticAudio.setVolume(0);
-      if (audioRef.current) audioRef.current.volume = 0;
-    } else {
-      romanticAudio.setVolume(volume);
-      if (audioRef.current) audioRef.current.volume = volume;
+    if (audioRef.current) {
+      audioRef.current.muted = nextMuted;
     }
   };
+
+  // Cleanup on component unmount
+  useEffect(() => {
+    const currentAudio = audioRef.current;
+    return () => {
+      if (currentAudio) {
+        currentAudio.pause();
+        currentAudio.removeAttribute('src');
+        currentAudio.load();
+      }
+    };
+  }, []);
 
   return (
     <section 
       id="our-songs-section"
       className="w-full max-w-xl mx-auto my-12 px-4"
     >
+      {/* Hidden Native HTML Audio Element */}
+      <audio
+        ref={audioRef}
+        src={currentSong.audio}
+        preload="metadata"
+        onLoadedMetadata={handleLoadedMetadata}
+        onTimeUpdate={handleTimeUpdate}
+        onEnded={handleEnded}
+        onPlay={handlePlayEvent}
+        onPause={handlePauseEvent}
+      />
+
       <div className="bg-[#fffdfa]/95 backdrop-blur-md rounded-3xl p-6 sm:p-8 border border-rose-200/70 shadow-xl shadow-rose-950/5">
         {/* Section Header */}
         <div className="text-center mb-6">
@@ -166,20 +200,27 @@ export const MusicPlayer: React.FC = () => {
 
         {/* Current Active Song Card */}
         <div className="flex flex-col sm:flex-row items-center gap-5 p-4 rounded-2xl bg-gradient-to-br from-rose-50/80 to-pink-50/60 border border-rose-100/80 mb-6">
-          {/* Song Cover Art */}
-          <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden shadow-md flex-shrink-0 border border-rose-200/60 group">
-            <img
-              src={currentSong.image}
-              alt={currentSong.title}
-              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-              loading="lazy"
-              onError={(e) => {
-                // Fallback gradient if unsplash rate-limits or fails
-                e.currentTarget.style.display = 'none';
-              }}
-            />
+          {/* Song Cover Art with Graceful Fallback */}
+          <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden shadow-md flex-shrink-0 border border-rose-200/60 group bg-gradient-to-tr from-rose-200 via-pink-100 to-rose-300 flex items-center justify-center">
+            {!imageError ? (
+              <img
+                src={currentSong.image}
+                alt={currentSong.title}
+                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                onError={() => setImageError(true)}
+              />
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center p-3 text-center bg-gradient-to-br from-rose-100 via-pink-50 to-rose-200">
+                <Disc className={`w-8 h-8 text-rose-400 mb-1 ${isPlaying ? 'animate-spin' : ''}`} />
+                <span className="text-[10px] font-semibold text-rose-700/80 uppercase tracking-wider line-clamp-1">
+                  Track {currentTrackIndex + 1}
+                </span>
+              </div>
+            )}
             {/* Overlay icon */}
-            <div className="absolute inset-0 bg-gradient-to-t from-rose-950/30 via-transparent to-transparent flex items-end justify-end p-2">
+            <div className="absolute inset-0 bg-gradient-to-t from-rose-950/30 via-transparent to-transparent flex items-end justify-end p-2 pointer-events-none">
               <Sparkles className="w-4 h-4 text-white/80" />
             </div>
           </div>
@@ -215,7 +256,7 @@ export const MusicPlayer: React.FC = () => {
           <input
             type="range"
             min={0}
-            max={duration}
+            max={duration > 0 ? duration : 100}
             value={currentTime}
             onChange={handleSeek}
             aria-label="Track progress slider"
@@ -283,7 +324,7 @@ export const MusicPlayer: React.FC = () => {
           {songs.map((song, idx) => (
             <button
               key={song.id}
-              onClick={() => switchTrack(idx)}
+              onClick={() => switchTrack(idx, isPlaying)}
               className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs whitespace-nowrap transition-all cursor-pointer flex-shrink-0 ${
                 currentTrackIndex === idx
                   ? 'bg-rose-500 text-white shadow-xs font-medium'

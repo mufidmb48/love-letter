@@ -8,7 +8,7 @@ export const songs: Song[] = [
     description: "When I see your face, there's not a thing that I would change, 'cause you're amazing just the way you are.",
     image: "https://images.unsplash.com/photo-1518199266791-5375a83190b7?q=80&w=800&auto=format&fit=crop",
     audio: "/assets/music1.mp3",
-    duration: "3:40",
+    duration: "0:33",
     themeColor: "from-rose-400 to-pink-500"
   },
   {
@@ -16,9 +16,9 @@ export const songs: Song[] = [
     title: "Woke Up In Love (Acoustic)",
     artist: "Kygo",
     description: "A soft acoustic melody that feels like waking up right next to you.",
-    image: "https://images.unsplash.com/photo-1534447677768-be436bb09401?q=80&w=800&auto=format&fit=crop",
+    image: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=800&auto=format&fit=crop",
     audio: "/assets/music2.mp3",
-    duration: "3:15",
+    duration: "0:37",
     themeColor: "from-purple-400 to-rose-400"
   },
   {
@@ -28,7 +28,7 @@ export const songs: Song[] = [
     description: "So as long as I live I'll love you, will have and hold you.",
     image: "https://images.unsplash.com/photo-1519741497674-611481863552?q=80&w=800&auto=format&fit=crop",
     audio: "/assets/music3.mp3",
-    duration: "3:52",
+    duration: "0:30",
     themeColor: "from-pink-400 to-rose-500"
   },
   {
@@ -38,7 +38,8 @@ export const songs: Song[] = [
     description: "Finally found the place where my heart can rest peacefully—with you.",
     image: "https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?q=80&w=800&auto=format&fit=crop",
     audio: "/assets/music4.mp3",
-    duration: "3:24",
+    duration: "0:32",
     themeColor: "from-amber-400 to-rose-500"
   }
 ];
+
